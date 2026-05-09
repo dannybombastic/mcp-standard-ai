@@ -14,3 +14,15 @@ checkpoints/
 # Ignore configuration files
 config.yaml
 # Ignore sensitive information
+secrets.yaml
+# Ignore IDE specific files
+.vscode/
+.idea/
+# Ignore test outputs
+test_outputs/
+,pytest_cache/
+# Ignore coverage reports
+htmlcov/
+.coverage
+.coverage.*
+.mypy_cache/

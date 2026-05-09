@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
+from pydantic import AnyUrl
 from mcp.server import Server
 from mcp.types import Resource, TextContent
 
@@ -38,7 +40,7 @@ def register_asset_resources(server: Server, settings: Settings) -> None:
             atype = asset.get("type", "asset")
             slug = asset.get("slug", "")
             name = asset.get("name", slug)
-            uri = f"standarcloud://{atype}/{slug}"
+            uri = cast("AnyUrl", f"standarcloud://{atype}/{slug}")
             resources.append(
                 Resource(
                     uri=uri,
