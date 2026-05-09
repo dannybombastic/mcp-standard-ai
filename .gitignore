@@ -1,0 +1,16 @@
+.pyc
+__pycache__/
+# Ignore virtual environment directories
+venv/
+env/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore data files
+data/
+# Ignore logs
+logs/
+# Ignore model checkpoints
+checkpoints/
+# Ignore configuration files
+config.yaml
+# Ignore sensitive information
