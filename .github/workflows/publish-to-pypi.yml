@@ -36,14 +36,12 @@ jobs:
           python -m build
 
       - name: Publish to PyPI (OIDC)
-        if: ${{ secrets.PYPI_API_TOKEN == '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
           skip-existing: false
 
       - name: Publish to PyPI (API Token)
-        if: ${{ secrets.PYPI_API_TOKEN != '' }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
