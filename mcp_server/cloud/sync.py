@@ -1,23 +1,47 @@
-"""SyncManager: lógica de push/pull entre .ai/ local y la nube."""
+"""SyncManager: DEPRECATED. Sincronización heredada. Use cloud API directamente."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import os
 
 from mcp_server.cloud.client import CloudClient
+from mcp_server.storage.acm_paths import AcmPaths
 from mcp_server.storage.paths import AIPaths
 from mcp_server.storage.registry import RegistryManager
 
 logger = logging.getLogger(__name__)
 
 
+def _prune_empty_parents(start_dir: Path, stop_at: Path) -> None:
+    """
+    Elimina directorios vacíos hacia arriba desde start_dir hasta stop_at (incluido stop_at como límite).
+    No borra stop_at, solo se detiene al llegar.
+    """
+    current = start_dir
+    stop_at = stop_at.resolve()
+    while True:
+        if not current.exists() or not current.is_dir():
+            break
+        if current.resolve() == stop_at:
+            break
+        try:
+            next(current.iterdir())
+            break  # no está vacío
+        except StopIteration:
+            current.rmdir()
+            current = current.parent
+            continue
+
+
 class SyncManager:
     """
-    Orquesta la sincronización bidireccional entre el directorio .ai/ local
+    Orquesta la sincronización bidireccional entre el directorio  local
     y la plataforma cloud.
 
     Estrategia:
@@ -30,6 +54,18 @@ class SyncManager:
         self.paths = paths
         self.registry = registry
         self.client = client
+        self._acm = AcmPaths(self.paths.ai_dir.parent)
+
+    def _record_sync_state(self, stage: str, payload: dict[str, Any]) -> None:
+        self._acm.create_all()
+        state = {
+            "version": 1,
+            "updated_at": datetime.now(tz=timezone.utc).isoformat(),
+            "stage": stage,
+            "project_root": str(self.paths.ai_dir.parent),
+            "payload": payload,
+        }
+        self._acm.sync_state.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # ------------------------------------------------------------------
     # Push
@@ -55,12 +91,15 @@ class SyncManager:
         for asset_type, asset_dir in asset_types:
             if not asset_dir.exists():
                 continue
-            for md_file in sorted(asset_dir.glob("*.md")):
+            # Política: el MCP solo sincroniza metainfo en Markdown.
+            # No debe subir JSON u otros formatos de configuración del editor.
+            for md_file in sorted(asset_dir.rglob("*.md")):
                 result = await self._push_file(md_file, asset_type, project_slug, dry_run)
                 results.append(result)
 
         if not dry_run:
             self.registry.save_if_dirty()
+        self._record_sync_state("push_all", {"dry_run": dry_run, "results": results})
 
         return results
 
@@ -142,22 +181,44 @@ class SyncManager:
     # Pull
     # ------------------------------------------------------------------
 
-    async def pull_all(self, project_slug: str | None = None, dry_run: bool = False) -> list[dict[str, Any]]:
+    async def pull_all(
+        self,
+        project_slug: str | None = None,
+        dry_run: bool = False,
+        mirror_delete: bool = False,
+    ) -> list[dict[str, Any]]:
         """
         Descarga todos los assets de la nube que no están en local
         o que tienen una versión más nueva.
+
+        Si mirror_delete=True, aplica modo espejo:
+        - elimina localmente los assets (y entradas de registry) que ya no existen en cloud
+        - limpia ficheros técnicos huérfanos dentro de .acm/ para ese tipo
         """
         self.registry.load()
         results: list[dict[str, Any]] = []
 
+        # 1) Pull/Update desde cloud
+        cloud_index: dict[str, dict[str, Any]] = {}
         for asset_type in ["skill", "prompt", "spec"]:
             cloud_assets = await self.client.list_assets(asset_type, project_slug=project_slug)
             for cloud_asset in cloud_assets:
+                remote_path = cloud_asset.get("path", "") or ""
+                slug = Path(remote_path).stem if remote_path else ""
+                if slug:
+                    cloud_index[f"{asset_type}/{slug}"] = cloud_asset
+
                 result = await self._pull_asset(cloud_asset, asset_type, dry_run)
                 results.append(result)
 
+        # 2) Mirror delete: borrar local si no existe en cloud
+        if mirror_delete:
+            deletes = await self._mirror_delete_missing(cloud_index=cloud_index, dry_run=dry_run)
+            results.extend(deletes)
+
         if not dry_run:
             self.registry.save_if_dirty()
+        self._record_sync_state("pull_all", {"dry_run": dry_run, "mirror_delete": mirror_delete, "results": results})
 
         return results
 
@@ -203,6 +264,102 @@ class SyncManager:
             return {"slug": slug, "type": asset_type, "action": "error", "status": str(e)}
 
     # ------------------------------------------------------------------
+    # Mirror delete helpers
+    # ------------------------------------------------------------------
+
+    async def _mirror_delete_missing(
+        self,
+        cloud_index: dict[str, dict[str, Any]],
+        dry_run: bool,
+    ) -> list[dict[str, Any]]:
+        """
+        Elimina assets locales que ya no existen en cloud (modo espejo).
+
+        cloud_index usa keys tipo '{type}/{slug}'.
+        """
+        results: list[dict[str, Any]] = []
+
+        # borrar entradas del registry (y sus ficheros) que no están en cloud
+        local_assets = list(self.registry.list_all())
+        for a in local_assets:
+            key = f"{a.get('type')}/{a.get('slug')}"
+            if key in cloud_index:
+                continue
+
+            asset_type = a.get("type")
+            slug = a.get("slug")
+            rel_path = a.get("path") or ""
+            target_path = (self.paths.ai_dir / rel_path) if rel_path else (self.paths.asset_dir(asset_type) / f"{slug}.md")
+
+            if dry_run:
+                results.append({"slug": slug, "type": asset_type, "action": "delete", "status": "dry_run", "path": str(target_path)})
+                continue
+
+            try:
+                if target_path.exists():
+                    target_path.unlink()
+                # limpiar carpetas vacías hacia arriba hasta el asset_dir
+                _prune_empty_parents(target_path.parent, stop_at=self.paths.asset_dir(asset_type))
+            except Exception as e:
+                results.append({"slug": slug, "type": asset_type, "action": "delete", "status": f"error: {e}"})
+                continue
+
+            # remover del registry (si existe método), si no, marcamos como tombstone via upsert vacío
+            if hasattr(self.registry, "delete"):
+                try:
+                    self.registry.delete(asset_type, slug)
+                except Exception:
+                    pass
+            else:
+                # fallback: dejar upsert sin cloud_id para que no lo considere synced
+                self.registry.upsert({
+                    "type": asset_type,
+                    "slug": slug,
+                    "name": a.get("name") or slug,
+                    "path": rel_path,
+                    "tags": a.get("tags") or [],
+                    "cloud_id": None,
+                    "cloud_slug": None,
+                    "synced_at": None,
+                    "checksum": None,
+                })
+
+            results.append({"slug": slug, "type": asset_type, "action": "delete", "status": "ok"})
+
+        # borrar ficheros huérfanos que existan en disco dentro de cada tipo y no estén en registry
+        for asset_type in ["skill", "prompt", "spec"]:
+            asset_dir = self.paths.asset_dir(asset_type)
+            if not asset_dir.exists():
+                continue
+
+            keep_files: set[Path] = set()
+            for a in self.registry.list_all():
+                if a.get("type") != asset_type:
+                    continue
+                rel_path = a.get("path") or ""
+                if rel_path:
+                    keep_files.add(self.paths.ai_dir / rel_path)
+
+            for p in asset_dir.rglob("*"):
+                if not p.is_file():
+                    continue
+                if p.suffix.lower() not in {".md", ".json"} and asset_type in {"skill", "prompt", "spec"}:
+                    # normalmente todo es .md pero no bloqueamos por si hay json adjunto
+                    pass
+                if p not in keep_files:
+                    if dry_run:
+                        results.append({"slug": p.stem, "type": asset_type, "action": "delete_file", "status": "dry_run", "path": str(p)})
+                        continue
+                    try:
+                        p.unlink()
+                        _prune_empty_parents(p.parent, stop_at=asset_dir)
+                        results.append({"slug": p.stem, "type": asset_type, "action": "delete_file", "status": "ok", "path": str(p)})
+                    except Exception as e:
+                        results.append({"slug": p.stem, "type": asset_type, "action": "delete_file", "status": f"error: {e}", "path": str(p)})
+
+        return results
+
+    # ------------------------------------------------------------------
     # Status
     # ------------------------------------------------------------------
 
@@ -227,13 +384,15 @@ class SyncManager:
         only_cloud = cloud_keys - local_keys
         synced = local_keys & cloud_keys
 
-        return {
+        status = {
             "local_count": len(local_keys),
             "cloud_count": len(cloud_keys),
             "synced": sorted(synced),
             "only_local": sorted(only_local),
             "only_cloud": sorted(only_cloud),
         }
+        self._record_sync_state("status", status)
+        return status
 
 
 # ------------------------------------------------------------------

@@ -206,6 +206,65 @@ class CloudClient:
         return asset
 
     # ------------------------------------------------------------------
+    # Sessions / Memory (Django)
+    # ------------------------------------------------------------------
+
+    async def list_sessions(
+        self,
+        project_slug: str | None = None,
+        external_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {}
+        if project_slug:
+            params["project"] = project_slug
+        if external_id:
+            params["external_id"] = external_id
+        result = await self._get("/api/v1/sessions/", **params)
+        return result.get("results", result) if isinstance(result, dict) else result
+
+    async def create_session(
+        self,
+        project_slug: str,
+        title: str = "",
+        external_id: str = "",
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"project": project_slug, "title": title, "external_id": external_id}
+        return await self._post("/api/v1/sessions/", payload)
+
+    async def add_memory_entry(
+        self,
+        session_id: str,
+        tag: str,
+        content: str,
+        title: str = "",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "session_id": session_id,
+            "tag": tag,
+            "title": title,
+            "content": content,
+            "metadata": metadata or {},
+        }
+        return await self._post("/api/v1/memory-entries/", payload)
+
+    async def list_memory_entries(
+        self,
+        session_id: str | None = None,
+        project_slug: str | None = None,
+        tag: str | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {}
+        if session_id:
+            params["session"] = session_id
+        if project_slug:
+            params["project"] = project_slug
+        if tag:
+            params["tag"] = tag
+        result = await self._get("/api/v1/memory-entries/", **params)
+        return result.get("results", result) if isinstance(result, dict) else result
+
+    # ------------------------------------------------------------------
     # PAT (Personal Access Tokens)
     # ------------------------------------------------------------------
 

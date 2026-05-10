@@ -1,4 +1,4 @@
-"""Resolución de rutas de storage: workspace-local vs global por usuario."""
+"""Resolución de rutas de storage: DEPRECATED. Use .acm/ para estado técnico y web API para contenido."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import platform
 from pathlib import Path
 
 
-AI_DIR = ".ai"
+AI_DIR = ".acm"  # DEPRECATED: legacy resolver now maps to .acm/
 POINTER_FILE = ".pointer.json"
 SYNC_DIR = ".sync"
 CONTEXT_DIR = "context"
@@ -19,38 +19,41 @@ TEMPLATES_DIR = "templates"
 
 
 def _global_ai_root() -> Path:
-    """Retorna la raíz del storage global según el SO."""
+    """DEPRECATED: Retorna la raíz del storage global según el SO (legacy support only)."""
     if platform.system() == "Windows":
         appdata = os.environ.get("APPDATA")
         if appdata:
-            return Path(appdata) / "ai"
-        return Path.home() / ".ai"
-    return Path.home() / ".ai"
+            return Path(appdata) / ".acm"
+        return Path.home() / ".acm"
+    return Path.home() / ".acm"
 
 
 class StorageResolver:
     """
-    Resuelve qué directorio `.ai/` usar para un workspace dado.
-
+    DEPRECATED: Resuelve qué directorio usar para un workspace dado.
+    
+    ⚠️  LEGACY ONLY - Use .acm/ for technical state and cloud API for content.
+    
     Modos:
-    - workspace: `./<workspace>/.ai/`
-    - global: `~/.ai/projects/<project_key>/` (o APPDATA en Windows)
+    - workspace: `./<workspace>/.acm/` (technical state only)
+    - global: `~/.acm/projects/<project_key>/` (technical state only)
 
-    Si hay un `.ai/.pointer.json` en el workspace, redirige al path global real.
+    Si hay un `.acm/.pointer.json` en el workspace, redirige al path global real.
     """
 
     def __init__(self, workspace: Path | str | None = None):
         self.workspace = Path(workspace).resolve() if workspace else Path.cwd()
 
     # ------------------------------------------------------------------
-    # Resolución del directorio .ai/
+    # Resolución del directorio .acm/ (DEPRECATED - use cloud API instead)
     # ------------------------------------------------------------------
 
     def resolve_ai_dir(self, mode: str = "workspace", project_key: str | None = None) -> Path:
         """
-        Retorna el path real del directorio .ai/ a usar.
-
-        Si existe un .pointer.json en el workspace, sigue el puntero (modo global).
+        DEPRECATED: Retorna el path real del directorio .acm/ a usar.
+        Technical state only - use cloud API for all content operations.
+        
+        Si existe un .acm/.pointer.json en el workspace, sigue el puntero (modo global).
         """
         workspace_ai = self.workspace / AI_DIR
         pointer_file = workspace_ai / POINTER_FILE
@@ -68,28 +71,28 @@ class StorageResolver:
         if mode == "global":
             if not project_key:
                 raise ValueError("project_key es requerido para modo global")
-            return _global_ai_root() / "projects" / project_key / AI_DIR
+            return _global_ai_root() / "projects" / project_key
 
         # Por defecto: workspace
         return workspace_ai
 
     # ------------------------------------------------------------------
-    # Subdirectorios estándar
+    # Subdirectorios estándar (DEPRECATED)
     # ------------------------------------------------------------------
 
     def get_paths(self, mode: str = "workspace", project_key: str | None = None) -> "AIPaths":
-        """Retorna un objeto con todos los subdirectorios del .ai/."""
+        """DEPRECATED: Retorna un objeto con todos los subdirectorios del .acm/ (technical state only)."""
         ai_dir = self.resolve_ai_dir(mode=mode, project_key=project_key)
         return AIPaths(ai_dir)
 
     # ------------------------------------------------------------------
-    # Escritura del puntero (modo global)
+    # Escritura del puntero (modo global - DEPRECATED)
     # ------------------------------------------------------------------
 
     def write_pointer(self, global_ai_path: Path) -> None:
         """
-        Escribe `.ai/.pointer.json` en el workspace apuntando al path global.
-        Solo se usa cuando storageMode=global.
+        DEPRECATED: Escribe `.acm/.pointer.json` en el workspace apuntando al path global.
+        Solo se usa cuando storageMode=global (legacy support only).
         """
         workspace_ai = self.workspace / AI_DIR
         workspace_ai.mkdir(parents=True, exist_ok=True)
@@ -101,7 +104,7 @@ class StorageResolver:
 
 
 class AIPaths:
-    """Contenedor con todos los paths estándar de una carpeta .ai/."""
+    """DEPRECATED: Contenedor con todos los paths estándar de una carpeta .acm/ (technical state only)."""
 
     def __init__(self, ai_dir: Path):
         self.ai_dir = ai_dir

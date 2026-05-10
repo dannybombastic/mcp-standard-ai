@@ -26,3 +26,14 @@ htmlcov/
 .coverage
 .coverage.*
 .mypy_cache/
+
+# Ignore Python build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+*.whl
+*.tar.gz
+
+# Ignore hatch specific
+.hatch/

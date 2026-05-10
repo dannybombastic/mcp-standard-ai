@@ -1,4 +1,4 @@
-"""Registry local: índice JSON de assets en el .ai/."""
+"""Registry local: DEPRECATED. Índice técnico heredado en .acm/."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ REGISTRY_VERSION = 1
 
 class RegistryManager:
     """
-    Gestiona el archivo `.ai/registry.json`.
+    DEPRECATED: Gestiona archivo `.acm/registry.json` (legacy support only).
 
     El registry es el índice canónico de todos los assets (skills, prompts, specs)
     almacenados localmente. Permite búsquedas por tipo, nombre y tags sin leer
@@ -28,7 +28,7 @@ class RegistryManager:
           "type": "skill|prompt|spec|context",
           "slug": "...",
           "name": "...",
-          "path": "...",          // relativo al .ai/
+          "path": "...",          
           "tags": [...],
           "cloud_id": null,       // null si solo local
           "cloud_slug": null,

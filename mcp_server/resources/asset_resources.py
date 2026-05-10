@@ -1,4 +1,4 @@
-"""MCP Resources: expone los assets del .ai/ como recursos legibles por la IA."""
+"""MCP Resources: DEPRECATED. Expone assets técnicos locales. Usa cloud API para contenido."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def register_asset_resources(server: Server, settings: Settings) -> None:
 
     @server.list_resources()
     async def _list_resources() -> list[Resource]:
-        """Devuelve la lista de recursos disponibles en el .ai/ del workspace."""
+        """Devuelve la lista de recursos técnicos en .acm/ del workspace (legacy)."""
         workspace = Path.cwd()
         resolver = StorageResolver(workspace)
         paths = resolver.get_paths()

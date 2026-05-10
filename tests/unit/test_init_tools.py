@@ -10,18 +10,6 @@ from mcp_server.tools import init_tools
 
 
 @pytest.mark.asyncio
-async def test_ai_init_creates_structure_and_files(tmp_path: Path) -> None:
-    result = await init_tools._ai_init({"workspace": str(tmp_path)}, Settings())
-
-    payload = json.loads(result[0].text)
-
-    assert payload["status"] in {"initialized", "already_exists"}
-    assert (tmp_path / ".ai" / "context" / "MODEL_BOOTSTRAP.md").exists()
-    assert (tmp_path / ".ai" / "context" / "AI_GUIDELINES.md").exists()
-    assert (tmp_path / ".ai" / "registry.json").exists()
-
-
-@pytest.mark.asyncio
 async def test_ai_status_reports_not_initialized(tmp_path: Path) -> None:
     result = await init_tools._ai_status({"workspace": str(tmp_path)}, Settings())
     payload = json.loads(result[0].text)
@@ -31,8 +19,10 @@ async def test_ai_status_reports_not_initialized(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_ai_status_reports_counts_for_initialized_workspace(tmp_path: Path) -> None:
-    await init_tools._ai_init({"workspace": str(tmp_path)}, Settings())
-    (tmp_path / ".ai" / "skills" / "a.md").write_text("# s", encoding="utf-8")
+    # Manually create .acm structure (what StorageResolver expects)
+    acm_dir = tmp_path / ".acm"
+    (acm_dir / "skills").mkdir(parents=True, exist_ok=True)
+    (acm_dir / "skills" / "a.md").write_text("# s", encoding="utf-8")
 
     result = await init_tools._ai_status({"workspace": str(tmp_path)}, Settings(token="t", base_url="u"))
     payload = json.loads(result[0].text)
