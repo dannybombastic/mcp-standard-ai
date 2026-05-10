@@ -41,10 +41,10 @@ jobs:
           verbose: true
           skip-existing: false
 
-    #   - name: Publish to PyPI (API Token)
-    #     uses: pypa/gh-action-pypi-publish@release/v1
-    #     with:
-    #       user: __token__
-    #       password: ${{ secrets.PYPI_API_TOKEN }}
-    #       verbose: true
-    #       skip-existing: false
+      - name: Publish to PyPI (API Token)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          verbose: true
+          skip-existing: false
